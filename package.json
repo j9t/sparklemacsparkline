@@ -3,7 +3,7 @@
   "bin": {
     "sparklemacsparkline": "bin/sparklemacsparkline.js"
   },
-  "description": "Accessible, dependency-free SVG sparkline generator for build steps and the command line",
+  "description": "Dependency-free SVG sparkline generator for build steps and the command line",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.14.0",
@@ -28,11 +28,11 @@
   "keywords": [
     "accessibility",
     "charts",
-    "data-visualization",
     "sparklemacsparkline",
     "sparklines",
     "static-site-generators",
-    "svg"
+    "svg",
+    "visualization"
   ],
   "license": "MIT",
   "name": "sparklemacsparkline",

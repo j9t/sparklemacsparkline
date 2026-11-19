@@ -1,4 +1,4 @@
-# Sparkle MacSparkline, the Accessible SVG Sparkline Generator
+# Sparkle MacSparkline, the SVG Sparkline Generator
 
 [![npm version](https://img.shields.io/npm/v/sparklemacsparkline.svg)](https://www.npmjs.com/package/sparklemacsparkline) [![Build status](https://github.com/j9t/sparklemacsparkline/workflows/Tests/badge.svg)](https://github.com/j9t/sparklemacsparkline/actions) [![Socket](https://badge.socket.dev/npm/package/sparklemacsparkline)](https://socket.dev/npm/package/sparklemacsparkline) [![GitHub Sponsors](https://badgen.net/static/Support/Open%20Source/cyan)](https://github.com/sponsors/j9t)
 
