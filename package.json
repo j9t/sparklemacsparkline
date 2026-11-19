@@ -3,7 +3,7 @@
   "bin": {
     "sparklemacsparkline": "bin/sparklemacsparkline.js"
   },
-  "description": "Dependency-free SVG sparkline generator for build steps and the command line",
+  "description": "Non-British SVG sparkline generator for build steps and the command line, as seen on dxsrc.org and meiert.com",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "eslint": "^10.15.0",
