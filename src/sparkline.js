@@ -30,6 +30,62 @@ function round(number) {
   return Math.round(number * 100) / 100;
 }
 
+// A minus sign or a second decimal point already separates two numbers
+function needsSpace(previous, next) {
+  return !(next.startsWith('-') || (next.startsWith('.') && previous.includes('.')));
+}
+
+// The shortest path data through the points: per segment, the shortest of
+// absolute and relative lineto (and their horizontal forms), repeating command
+// letters only where the command changes. Relative coordinates come from the
+// rounded points, so they add up to exactly the same positions.
+function makePath(points) {
+  // Per state—the current command and whether the last number has a decimal
+  // point—the shortest path so far, as its length and its last part, which
+  // links back to the ones before (no nested arrays, as series can be long)
+  let states = new Map();
+  const [xStart, yStart] = points[0].map(format);
+  const textStart = `${xStart}${needsSpace(xStart, yStart) ? ' ' : ''}${yStart}`;
+  // `m` from the origin is absolute, too, but makes the coordinates after it relative
+  for (const command of ['L', 'l']) {
+    const text = `${command === 'L' ? 'M' : 'm'}${textStart}`;
+    states.set(command + yStart.includes('.'), { command, last: yStart, length: text.length, part: { text } });
+  }
+
+  for (let index = 1; index < points.length; index++) {
+    const [x0, y0] = points[index - 1];
+    const [x1, y1] = points[index];
+    const dx = round(x1 - x0);
+    const dy = round(y1 - y0);
+    const options = [['L', [x1, y1]], ['l', [dx, dy]]];
+    if (dy === 0) options.push(['H', [x1]], ['h', [dx]]);
+
+    const statesNext = new Map();
+    for (const state of states.values()) {
+      for (const [command, numbers] of options) {
+        let text = command === state.command ? '' : command;
+        let last = text ? null : state.last;
+        for (const number of numbers.map(format)) {
+          if (last !== null && needsSpace(last, number)) text += ' ';
+          text += number;
+          last = number;
+        }
+        const key = command + last.includes('.');
+        const length = state.length + text.length;
+        if (!statesNext.has(key) || length < statesNext.get(key).length) {
+          statesNext.set(key, { command, last, length, part: { previous: state.part, text } });
+        }
+      }
+    }
+    states = statesNext;
+  }
+
+  const parts = [];
+  let { part } = [...states.values()].reduce((a, b) => (b.length < a.length ? b : a));
+  for (; part; part = part.previous) parts.push(part.text);
+  return parts.reverse().join('');
+}
+
 function escapeAttribute(value) {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -180,10 +236,7 @@ export function sparkline(values, options = {}) {
   const points = values.map((value, index) => [round(padding + index * step), toY(value)]);
   const [pointLastX, pointLastY] = points.at(-1);
 
-  // After one “L”, further coordinate pairs are implicit linetos, so the
-  // command letter is only needed once
-  const [pointHead, ...pointsRest] = points.map(([x, y]) => `${format(x)} ${format(y)}`);
-  const d = `M${pointHead}L${pointsRest.join(' ')}`;
+  const d = makePath(points);
 
   const attributesPath = isInline
     ? ` fill="none" stroke="${escapeAttribute(foreground)}" stroke-width="${format(widthStroke)}"` +
@@ -203,7 +256,7 @@ export function sparkline(values, options = {}) {
   const crossesZero = domainMin < 0 && domainMax > 0;
   const yZero = toY(0);
   const markupAxis = axis && crossesZero
-    ? `<line${naming('-axis')} x1="0" y1="${format(yZero)}" x2="${width}" y2="${format(yZero)}"${attributesAxis}/>`
+    ? `<line${naming('-axis')} y1="${format(yZero)}" x2="${format(width)}" y2="${format(yZero)}"${attributesAxis}/>`
     : '';
 
   const markupPath = `<path${naming('-line')} d="${d}"${attributesPath}/>`;
@@ -215,7 +268,7 @@ export function sparkline(values, options = {}) {
   const markupTitle = `<title>${escapeAttribute(describeSeries(values, { labels, title }))}</title>`;
   const attributesRole = decorative ? ' aria-hidden="true"' : ' role="img"';
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}"` +
-    ` width="${width}" height="${height}"${attributesRole}${naming('')}>` +
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${format(width)} ${format(height)}"` +
+    ` width="${format(width)}" height="${format(height)}"${attributesRole}${naming('')}>` +
     `${markupTitle}${markupBackground}${markupAxis}${markupPath}${markupDot}</svg>`;
 }
