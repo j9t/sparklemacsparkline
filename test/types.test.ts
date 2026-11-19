@@ -12,6 +12,7 @@ import type { DescribeOptions, SparklineOptions } from '../src/index.js';
 
 const options: SparklineOptions = {
   accent: 'red',
+  axis: false,
   background: '#fff',
   classes: false,
   decorative: true,
@@ -22,7 +23,6 @@ const options: SparklineOptions = {
   tight: true,
   title: 'Posts per year',
   width: 160,
-  zeroLine: false,
 };
 const svg: string = sparkline([1, 2], options);
 

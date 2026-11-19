@@ -6,8 +6,8 @@ const widthStroke = 1.25; // Hairline at any size, which is the point of a spark
 const radiusDotMin = 1.25;
 const radiusDotMax = 4;
 const ratioDot = .09; // Dot radius as a share of the height
-const widthZero = .5; // The zero line stays recessive against the data
-const opacityZero = .35;
+const widthAxis = .5; // The axis stays recessive against the data
+const opacityAxis = .35;
 
 export const styles = ['inline', 'external'];
 
@@ -18,6 +18,12 @@ const patternColor = /^[\w#(),.%/ +*-]+$/;
 // Trim the leading zero of a decimal, the way a minifier would: `0.5` → `.5`
 function format(number) {
   return String(number).replace(/^(-?)0\./, '$1.');
+}
+
+// For the description: `1234.567` → “1,234.57”, without float artifacts
+// like `0.30000000000000004`
+function formatNumber(number) {
+  return number.toLocaleString('en-US', { maximumFractionDigits: 2 });
 }
 
 function round(number) {
@@ -83,29 +89,37 @@ export function describeSeries(values, { labels, title } = {}) {
   checkValues(values);
   checkLabels(labels, values);
 
-  const { min: valueMin, max: valueMax } = findExtent(values);
-  const valueFirst = values[0];
-  const valueLast = values.at(-1);
-  const span = valueMax - valueMin;
+  const { min, max } = findExtent(values);
+  const first = values[0];
+  const last = values.at(-1);
+  const span = max - min;
 
-  const namePeak = labels?.[values.indexOf(valueMax)];
-  const nameFirst = labels?.[0];
-  const nameLast = labels?.at(-1);
+  // A turn is worth mentioning only once it covers part of the spread
+  const exceeds = difference => difference > span * .05;
+  const hasPeak = exceeds(max - first) && exceeds(max - last);
+  const hasLow = exceeds(first - min) && exceeds(last - min);
+  const at = value => {
+    const label = labels?.[values.indexOf(value)];
+    return label ? ` in ${label}` : '';
+  };
 
-  // Call a change worth mentioning only once it covers part of the spread
-  let trend = 'roughly steady';
-  if (span > 0 && (valueLast - valueFirst) / span > .05) trend = 'overall rising';
-  if (span > 0 && (valueFirst - valueLast) / span > .05) trend = 'overall falling';
+  let shape;
+  if (span === 0) {
+    shape = `steady at ${formatNumber(first)}`;
+  } else if (hasPeak && hasLow) {
+    shape = `ranging from ${formatNumber(min)}${at(min)} to ${formatNumber(max)}${at(max)}, ending at ${formatNumber(last)}`;
+  } else if (hasPeak) {
+    shape = `rising from ${formatNumber(first)} to a peak of ${formatNumber(max)}${at(max)}, then falling to ${formatNumber(last)}`;
+  } else if (hasLow) {
+    shape = `falling from ${formatNumber(first)} to a low of ${formatNumber(min)}${at(min)}, then rising to ${formatNumber(last)}`;
+  } else {
+    // Without a turn between them, the ends are the extremes
+    shape = `${last > first ? 'rising' : 'falling'} from ${formatNumber(first)} to ${formatNumber(last)}`;
+  }
 
-  const scope = nameFirst && nameLast
-    ? `${values.length} values from ${nameFirst} to ${nameLast}`
-    : `${values.length} values`;
-  const peak = namePeak
-    ? `from ${valueMin} to a peak of ${valueMax} in ${namePeak}`
-    : `from ${valueMin} to ${valueMax}`;
-
-  const lead = title ? `${title.replace(/[.\s]+$/, '')}. ` : '';
-  return `${lead}Sparkline of ${scope}, ${peak}, ending at ${valueLast}; ${trend}.`;
+  const scope = labels ? ` from ${labels[0]} to ${labels.at(-1)}` : '';
+  const lead = title ? `${title.replace(/[.\s]+$/, '')}—sparkline` : 'Sparkline';
+  return `${lead} of ${values.length} values${scope}: ${shape}`;
 }
 
 export function sparkline(values, options = {}) {
@@ -113,6 +127,7 @@ export function sparkline(values, options = {}) {
 
   const {
     accent,
+    axis = true,
     background,
     classes = true,
     decorative = false,
@@ -122,8 +137,7 @@ export function sparkline(values, options = {}) {
     style = 'inline',
     tight = false,
     title,
-    width = Math.min(widthMax, Math.max(widthMin, (values.length - 1) * stepDefault)),
-    zeroLine = true
+    width = Math.min(widthMax, Math.max(widthMin, (values.length - 1) * stepDefault))
   } = options;
 
   checkLabels(labels, values);
@@ -176,8 +190,8 @@ export function sparkline(values, options = {}) {
       ' stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"'
     : '';
   const attributesDot = isInline ? ` fill="${escapeAttribute(colorAccent)}"` : '';
-  const attributesZero = isInline
-    ? ` stroke="${escapeAttribute(foreground)}" stroke-width="${format(widthZero)}" opacity="${format(opacityZero)}"`
+  const attributesAxis = isInline
+    ? ` stroke="${escapeAttribute(foreground)}" stroke-width="${format(widthAxis)}" opacity="${format(opacityAxis)}"`
     : '';
 
   const markupBackground = background
@@ -188,22 +202,20 @@ export function sparkline(values, options = {}) {
   // all-positive series zero is the floor already
   const crossesZero = domainMin < 0 && domainMax > 0;
   const yZero = toY(0);
-  const markupZero = zeroLine && crossesZero
-    ? `<line${naming('-zero')} x1="0" y1="${format(yZero)}" x2="${width}" y2="${format(yZero)}"${attributesZero}/>`
+  const markupAxis = axis && crossesZero
+    ? `<line${naming('-axis')} x1="0" y1="${format(yZero)}" x2="${width}" y2="${format(yZero)}"${attributesAxis}/>`
     : '';
 
   const markupPath = `<path${naming('-line')} d="${d}"${attributesPath}/>`;
   const markupDot = `<circle${naming('-dot')} cx="${format(pointLastX)}" cy="${format(pointLastY)}" r="${format(radiusDot)}"${attributesDot}/>`;
-  const markupTitle = title ? `<title>${escapeAttribute(title)}</title>` : '';
+  // The title element names the chart and doubles as the tooltip, so the
+  // description isn’t repeated in `aria-label`. A decorative chart keeps the
+  // tooltip but is hidden from assistive technology, which is what a heading
+  // needs: A descendant name would otherwise be folded into the heading’s own.
+  const markupTitle = `<title>${escapeAttribute(describeSeries(values, { labels, title }))}</title>`;
+  const attributesRole = decorative ? ' aria-hidden="true"' : ' role="img"';
 
-  // A decorative chart is hidden from assistive technology rather than
-  // described, which is what a heading needs: A descendant label would
-  // otherwise be folded into the heading’s own accessible name
-  const attributesRole = decorative
-    ? ' aria-hidden="true"'
-    : ` role="img" aria-label="${escapeAttribute(describeSeries(values, { labels, title }))}"`;
-
-  return `<svg${naming('')} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}"` +
-    ` width="${width}" height="${height}"${attributesRole}>` +
-    `${markupTitle}${markupBackground}${markupZero}${markupPath}${markupDot}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}"` +
+    ` width="${width}" height="${height}"${attributesRole}${naming('')}>` +
+    `${markupTitle}${markupBackground}${markupAxis}${markupPath}${markupDot}</svg>`;
 }

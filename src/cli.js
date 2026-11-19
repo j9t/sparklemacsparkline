@@ -11,9 +11,9 @@ A series starting with a negative value needs \`--\` before it, after all option
 
 Options:
   --labels <list>     Comma-separated labels, one per value, for the description
-  --title <text>      Title (tooltip, description lead, and default file name)
+  --title <text>      Title (leads the description, names the default file)
   --tight             Scale to the data range instead of starting at zero
-  --no-zero-line      Leave out the line drawn where a series crosses zero
+  --no-axis           Leave out the axis drawn where a series crosses zero
   --decorative        Hide the chart from assistive technology
   --no-class          Leave out class names
   --width <number>    Width (defaults to 4 per value, from 48 to 160)
@@ -40,8 +40,8 @@ const options = {
   height: { type: 'string' },
   help: { type: 'boolean', default: false },
   labels: { type: 'string' },
+  'no-axis': { type: 'boolean', default: false },
   'no-class': { type: 'boolean', default: false },
-  'no-zero-line': { type: 'boolean', default: false },
   output: { type: 'string' },
   stdout: { type: 'boolean', default: false },
   style: { type: 'string' },
@@ -143,6 +143,7 @@ export async function runCli(args) {
   try {
     svg = sparkline(series, {
       accent: flags.accent,
+      axis: !flags['no-axis'],
       background: flags.background,
       classes: !flags['no-class'],
       decorative: flags.decorative,
@@ -152,8 +153,7 @@ export async function runCli(args) {
       style: flags.style,
       tight: flags.tight,
       title: flags.title,
-      width: toNumber(flags.width),
-      zeroLine: !flags['no-zero-line']
+      width: toNumber(flags.width)
     });
   } catch (err) {
     return fail(err.message);

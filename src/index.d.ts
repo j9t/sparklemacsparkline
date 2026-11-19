@@ -8,11 +8,13 @@ export interface DescribeOptions {
 export interface SparklineOptions extends DescribeOptions {
   /** Color of the end dot (defaults to `foreground`) */
   accent?: string;
+  /** Set to `false` to leave out the axis drawn where a series crosses zero (defaults to `true`) */
+  axis?: boolean;
   /** Background color (none by default) */
   background?: string;
   /** Set to `false` to leave out class names (defaults to `true`) */
   classes?: boolean;
-  /** Set to `true` to hide the chart from assistive technology instead of describing it */
+  /** Set to `true` to hide the chart from assistive technology (defaults to `false`) */
   decorative?: boolean;
   /** Line color (defaults to `currentColor`) */
   foreground?: string;
@@ -24,8 +26,6 @@ export interface SparklineOptions extends DescribeOptions {
   tight?: boolean;
   /** Width (defaults to 4 per value, from 48 to 160) */
   width?: number;
-  /** Set to `false` to leave out the line drawn where a series crosses zero (defaults to `true`) */
-  zeroLine?: boolean;
 }
 
 /** Returns the sparkline as SVG markup */
