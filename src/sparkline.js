@@ -36,9 +36,9 @@ function needsSpace(previous, next) {
 }
 
 // The shortest path data through the points: per segment, the shortest of
-// absolute and relative lineto (and their horizontal forms), repeating command
-// letters only where the command changes. Relative coordinates come from the
-// rounded points, so they add up to exactly the same positions.
+// absolute and relative lineto (and their horizontal and vertical forms),
+// repeating command letters only where the command changes. Relative coordinates
+// come from the rounded points, so they add up to exactly the same positions.
 function makePath(points) {
   // Per state—the current command and whether the last number has a decimal
   // point—the shortest path so far, as its length and its last part, which
@@ -59,6 +59,8 @@ function makePath(points) {
     const dy = round(y1 - y0);
     const options = [['L', [x1, y1]], ['l', [dx, dy]]];
     if (dy === 0) options.push(['H', [x1]], ['h', [dx]]);
+    // Only in dense or narrow charts, where neighboring points round to the same x
+    if (dx === 0) options.push(['V', [y1]], ['v', [dy]]);
 
     const statesNext = new Map();
     for (const state of states.values()) {

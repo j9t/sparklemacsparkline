@@ -51,21 +51,25 @@ describe('sparkline()', () => {
     assert.strictEqual(d([0, 0, 0, 0, 1, 0, 2, 5, 7, 3, 1, 0, 0, 0, 0, 0, 0]), 'M1.44 14.56H5.26 9.08 12.9l3.82-1.87 3.82 1.87 3.82-3.75 3.82-5.62L32 1.44l3.82 7.5 3.82 3.75 3.82 1.87h3.82H51.1h3.82 3.82 3.82');
     // No space before a minus sign or a second decimal point
     assert.strictEqual(d([13, 12, 18, 18, 7, 7]), 'M1.44 5.08l9.02.73 9.03-4.37h9.02l9.03 8.02h9.02');
+    // Vertical forms where neighboring points share an x
+    assert.strictEqual(sparkline([1, 5, 2, 8, 3], { width: 2.9 }).match(/ d="([^"]*)"/)[1], 'M1.44 12.92V6.36l.01 4.92.01-9.84v8.2');
   });
 
   test('Draws relative path data through the same points as absolute coordinates would', () => {
-    // Reads `M`/`m`, `L`/`l`, and `H`/`h` path data back into absolute points
+    // Reads `M`/`m`, `L`/`l`, `H`/`h`, and `V`/`v` path data back into absolute points
     const readPath = d => {
       const points = [];
       let command = '';
       let x = 0;
       let y = 0;
-      const tokens = d.match(/[MmLlHh]|-?(?:\d+\.?\d*|\.\d+)/g);
+      const tokens = d.match(/[MmLlHhVv]|-?(?:\d+\.?\d*|\.\d+)/g);
       for (let index = 0; index < tokens.length;) {
         if (/[A-Za-z]/.test(tokens[index])) command = tokens[index++];
         const relative = command === command.toLowerCase();
         if (command.toLowerCase() === 'h') {
           x = Math.round(((relative ? x : 0) + Number(tokens[index++])) * 100) / 100;
+        } else if (command.toLowerCase() === 'v') {
+          y = Math.round(((relative ? y : 0) + Number(tokens[index++])) * 100) / 100;
         } else {
           x = Math.round(((relative ? x : 0) + Number(tokens[index++])) * 100) / 100;
           y = Math.round(((relative ? y : 0) + Number(tokens[index++])) * 100) / 100;
@@ -82,13 +86,15 @@ describe('sparkline()', () => {
       const values = Array.from({ length: 2 + Math.floor(random() * 40) }, () => Math.round((random() - .3) * 100) / 10);
       const min = Math.min(0, ...values);
       const span = Math.max(0, ...values) - min || 1;
-      const width = Math.min(160, Math.max(48, (values.length - 1) * 4));
+      // Every other run narrow enough for neighboring points to share an x, drawn vertically
+      const widthOption = run % 2 ? 2.9 : undefined;
+      const width = widthOption ?? Math.min(160, Math.max(48, (values.length - 1) * 4));
       const step = (width - 2.88) / (values.length - 1);
       const expected = values.map((value, index) => [
         Math.round((1.44 + index * step) * 100) / 100,
         Math.round((14.56 - (value - min) / span * 13.12) * 100) / 100
       ]);
-      assert.deepStrictEqual(readPath(sparkline(values).match(/ d="([^"]*)"/)[1]), expected);
+      assert.deepStrictEqual(readPath(sparkline(values, { width: widthOption }).match(/ d="([^"]*)"/)[1]), expected);
     }
   });
 
