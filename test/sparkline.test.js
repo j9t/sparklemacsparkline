@@ -7,7 +7,7 @@ describe('sparkline()', () => {
     assert.strictEqual(
       sparkline([4, 42, 50, 34, 13]),
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 16" width="48" height="16" role="img" class="sparkline"><title>Sparkline of 5 values: rising from 4 to a peak of 50, then falling to 13</title>' +
-      '<path class="sparkline-line" d="M1.44 13.51L12.72 3.54 24 1.44 35.28 5.64 46.56 11.15" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>' +
+      '<path class="sparkline-line" d="M1.44 13.51 12.72 3.54 24 1.44l11.28 4.2 11.28 5.51" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>' +
       '<circle class="sparkline-dot" cx="46.56" cy="11.15" r="1.44" fill="currentColor"/></svg>'
     );
   });
@@ -17,20 +17,20 @@ describe('sparkline()', () => {
       sparkline([3, 0, 7], { classes: false, decorative: true, title: 'Posts per year', width: 160, height: 20 }),
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 20" width="160" height="20" aria-hidden="true">' +
       '<title>Posts per year—sparkline of 3 values: falling from 3 to a low of 0, then rising to 7</title>' +
-      '<path d="M1.8 11.17L80 18.2 158.2 1.8" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>' +
+      '<path d="M1.8 11.17 80 18.2 158.2 1.8" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>' +
       '<circle cx="158.2" cy="1.8" r="1.8" fill="currentColor"/></svg>'
     );
   });
 
   test('Leaves presentation to the style sheet with the “external” style', () => {
     const svg = sparkline([1, 2], { style: 'external' });
-    assert.ok(svg.includes('<path class="sparkline-line" d="M1.44 8L46.56 1.44"/>'));
+    assert.ok(svg.includes('<path class="sparkline-line" d="M1.44 8 46.56 1.44"/>'));
     assert.ok(!svg.includes('stroke='));
     assert.ok(!svg.includes('fill='));
   });
 
   test('Draws an axis only for a series crossing zero', () => {
-    assert.ok(sparkline([-10, 5, -3, 8]).includes('<line class="sparkline-axis" x1="0" y1="7.27" x2="48" y2="7.27" stroke="currentColor" stroke-width=".5" opacity=".35"/>'));
+    assert.ok(sparkline([-10, 5, -3, 8]).includes('<line class="sparkline-axis" y1="7.27" x2="48" y2="7.27" stroke="currentColor" stroke-width=".5" opacity=".35"/>'));
     assert.ok(!sparkline([0, 5, 3, 8]).includes('<line'));
     assert.ok(!sparkline([-10, 5, -3, 8], { axis: false }).includes('<line'));
   });
@@ -42,7 +42,60 @@ describe('sparkline()', () => {
   });
 
   test('Draws a flat series flat', () => {
-    assert.ok(sparkline([1, 1, 1], { tight: true }).includes('d="M1.44 14.56L24 14.56 46.56 14.56"'));
+    assert.ok(sparkline([1, 1, 1], { tight: true }).includes('d="M1.44 14.56H24 46.56"'));
+  });
+
+  test('Writes the shortest path data', () => {
+    const d = values => sparkline(values).match(/ d="([^"]*)"/)[1];
+    // Horizontal and relative forms, with command letters only where the command changes
+    assert.strictEqual(d([0, 0, 0, 0, 1, 0, 2, 5, 7, 3, 1, 0, 0, 0, 0, 0, 0]), 'M1.44 14.56H5.26 9.08 12.9l3.82-1.87 3.82 1.87 3.82-3.75 3.82-5.62L32 1.44l3.82 7.5 3.82 3.75 3.82 1.87h3.82H51.1h3.82 3.82 3.82');
+    // No space before a minus sign or a second decimal point
+    assert.strictEqual(d([13, 12, 18, 18, 7, 7]), 'M1.44 5.08l9.02.73 9.03-4.37h9.02l9.03 8.02h9.02');
+    // Vertical forms where neighboring points share an x
+    assert.strictEqual(sparkline([1, 5, 2, 8, 3], { width: 2.9 }).match(/ d="([^"]*)"/)[1], 'M1.44 12.92V6.36l.01 4.92.01-9.84v8.2');
+  });
+
+  test('Draws relative path data through the same points as absolute coordinates would', () => {
+    // Reads `M`/`m`, `L`/`l`, `H`/`h`, and `V`/`v` path data back into absolute points
+    const readPath = d => {
+      const points = [];
+      let command = '';
+      let x = 0;
+      let y = 0;
+      const tokens = d.match(/[MmLlHhVv]|-?(?:\d+\.?\d*|\.\d+)/g);
+      for (let index = 0; index < tokens.length;) {
+        if (/[A-Za-z]/.test(tokens[index])) command = tokens[index++];
+        const relative = command === command.toLowerCase();
+        if (command.toLowerCase() === 'h') {
+          x = Math.round(((relative ? x : 0) + Number(tokens[index++])) * 100) / 100;
+        } else if (command.toLowerCase() === 'v') {
+          y = Math.round(((relative ? y : 0) + Number(tokens[index++])) * 100) / 100;
+        } else {
+          x = Math.round(((relative ? x : 0) + Number(tokens[index++])) * 100) / 100;
+          y = Math.round(((relative ? y : 0) + Number(tokens[index++])) * 100) / 100;
+        }
+        points.push([x, y]);
+        if (command === 'M') command = 'L';
+        if (command === 'm') command = 'l';
+      }
+      return points;
+    };
+    let seed = 42;
+    const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let run = 0; run < 200; run++) {
+      const values = Array.from({ length: 2 + Math.floor(random() * 40) }, () => Math.round((random() - .3) * 100) / 10);
+      const min = Math.min(0, ...values);
+      const span = Math.max(0, ...values) - min || 1;
+      // Every other run narrow enough for neighboring points to share an x, drawn vertically
+      const widthOption = run % 2 ? 2.9 : undefined;
+      const width = widthOption ?? Math.min(160, Math.max(48, (values.length - 1) * 4));
+      const step = (width - 2.88) / (values.length - 1);
+      const expected = values.map((value, index) => [
+        Math.round((1.44 + index * step) * 100) / 100,
+        Math.round((14.56 - (value - min) / span * 13.12) * 100) / 100
+      ]);
+      assert.deepStrictEqual(readPath(sparkline(values, { width: widthOption }).match(/ d="([^"]*)"/)[1]), expected);
+    }
   });
 
   test('Applies colors and a background', () => {

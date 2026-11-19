@@ -13,7 +13,7 @@ $ npx sparklemacsparkline --stdout --labels 2006,2007,2008,2009,2010 4,42,50,34,
 ```
 
 ```html
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 16" width="48" height="16" role="img" class="sparkline"><title>Sparkline of 5 values from 2006 to 2010: rising from 4 to a peak of 50 in 2008, then falling to 13</title><path class="sparkline-line" d="M1.44 13.51L12.72 3.54 24 1.44 35.28 5.64 46.56 11.15" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><circle class="sparkline-dot" cx="46.56" cy="11.15" r="1.44" fill="currentColor"/></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 16" width="48" height="16" role="img" class="sparkline"><title>Sparkline of 5 values from 2006 to 2010: rising from 4 to a peak of 50 in 2008, then falling to 13</title><path class="sparkline-line" d="M1.44 13.51 12.72 3.54 24 1.44l11.28 4.2 11.28 5.51" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/><circle class="sparkline-dot" cx="46.56" cy="11.15" r="1.44" fill="currentColor"/></svg>
 ```
 
 ## Usage
@@ -114,6 +114,8 @@ A series that crosses zero gets a faint axis at zero, as the sign of a value is 
 ### Presentation
 
 Presentation is inline by default: Colors are set as presentation attributes on the elements, which keeps the output valid as a standalone file and, unlike an embedded `style` element, cannot leak rules into a page it’s inlined in. As the default color is `currentColor`, an inlined sparkline still follows the surrounding text color, dark mode, and forced-colors mode. (Custom colors don’t adapt to forced-colors mode.)
+
+The markup is as short as valid SVG allows: Path data uses the shortest of absolute and relative commands per segment, numbers are rounded to two decimals without leading zeros, and default attributes are left out. What remains is needed for a standalone file (`xmlns`, quoted attributes)—a minifier can still drop that when the sparkline is inlined in HTML.
 
 With the external style, the elements carry class names only (`sparkline`, `sparkline-line`, `sparkline-dot`, `sparkline-axis`), leaving all presentation to a style sheet. Without classes, the elements can be selected by context, as in `h2 svg path`.
 
