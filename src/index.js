@@ -1,0 +1,1 @@
+export { describeSeries, sparkline } from './sparkline.js';
