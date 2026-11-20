@@ -15,6 +15,10 @@ export const styles = ['inline', 'external'];
 // keeping out the quotes and angle brackets that could break out of an attribute
 const patternColor = /^[\w#(),.%/ +*-]+$/;
 
+// Characters XML 1.0 doesn’t allow; lone surrogates are caught by `isWellFormed()`
+// eslint-disable-next-line no-control-regex
+const patternCharInvalid = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/;
+
 // Trim the leading zero of a decimal, the way a minifier would: `0.5` → `.5`
 function format(number) {
   return String(number).replace(/^(-?)0\./, '$1.');
@@ -57,17 +61,19 @@ function makePath(points) {
     const [x1, y1] = points[index];
     const dx = round(x1 - x0);
     const dy = round(y1 - y0);
-    const options = [['L', [x1, y1]], ['l', [dx, dy]]];
-    if (dy === 0) options.push(['H', [x1]], ['h', [dx]]);
+    // Formatted once here rather than once per state
+    const [textX, textY, textDx, textDy] = [x1, y1, dx, dy].map(format);
+    const options = [['L', textX, textY], ['l', textDx, textDy]];
+    if (dy === 0) options.push(['H', textX], ['h', textDx]);
     // Only in dense or narrow charts, where neighboring points round to the same x
-    if (dx === 0) options.push(['V', [y1]], ['v', [dy]]);
+    if (dx === 0) options.push(['V', textY], ['v', textDy]);
 
     const statesNext = new Map();
     for (const state of states.values()) {
-      for (const [command, numbers] of options) {
+      for (const [command, ...numbers] of options) {
         let text = command === state.command ? '' : command;
         let last = text ? null : state.last;
-        for (const number of numbers.map(format)) {
+        for (const number of numbers) {
           if (last !== null && needsSpace(last, number)) text += ' ';
           text += number;
           last = number;
@@ -88,6 +94,31 @@ function makePath(points) {
   return parts.reverse().join('');
 }
 
+// Points sharing an x draw a vertical stroke, which its first, lowest, highest,
+// and last point already cover—so a long series in a narrow box keeps at most
+// four points per column, rendering the same
+function thinPoints(points) {
+  const thinned = [];
+  let start = 0;
+  while (start < points.length) {
+    const x = points[start][0];
+    let end = start;
+    let indexMin = start;
+    let indexMax = start;
+    while (end + 1 < points.length && points[end + 1][0] === x) {
+      end++;
+      if (points[end][1] < points[indexMin][1]) indexMin = end;
+      if (points[end][1] > points[indexMax][1]) indexMax = end;
+    }
+    for (const index of new Set([start, Math.min(indexMin, indexMax), Math.max(indexMin, indexMax), end])) {
+      const yPrevious = thinned.at(-1)?.[0] === x ? thinned.at(-1)[1] : undefined;
+      if (points[index][1] !== yPrevious) thinned.push(points[index]);
+    }
+    start = end + 1;
+  }
+  return thinned;
+}
+
 function escapeAttribute(value) {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -105,6 +136,12 @@ function checkValues(values) {
   }
 }
 
+function checkText(value, name) {
+  if (patternCharInvalid.test(value) || !value.isWellFormed()) {
+    throw new TypeError(`\`${name}\` contains characters that XML doesn’t allow.`);
+  }
+}
+
 function checkLabels(labels, values) {
   if (labels === undefined) return;
   if (!Array.isArray(labels)) {
@@ -113,6 +150,15 @@ function checkLabels(labels, values) {
   if (labels.length !== values.length) {
     throw new RangeError(`Got ${labels.length} labels for ${values.length} values—they have to match.`);
   }
+  for (const label of labels) checkText(String(label), 'labels');
+}
+
+function checkTitle(title) {
+  if (title === undefined) return;
+  if (typeof title !== 'string') {
+    throw new TypeError('`title` has to be a string.');
+  }
+  checkText(title, 'title');
 }
 
 function checkColor(value, name) {
@@ -126,6 +172,10 @@ function checkSize(value, name) {
   if (value === undefined) return;
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
     throw new RangeError(`\`${value}\` is not a positive number (\`${name}\`).`);
+  }
+  // Coordinates get scaled by 100 for rounding, which mustn’t overflow
+  if (!Number.isFinite(value * 100)) {
+    throw new RangeError(`\`${value}\` is too large (\`${name}\`).`);
   }
 }
 
@@ -146,8 +196,12 @@ function findExtent(values) {
 export function describeSeries(values, { labels, title } = {}) {
   checkValues(values);
   checkLabels(labels, values);
+  checkTitle(title);
+  return describe(values, findExtent(values), labels, title);
+}
 
-  const { min, max } = findExtent(values);
+// `describeSeries()` without the checks, for `sparkline()`, which ran them already
+function describe(values, { min, max }, labels, title) {
   const first = values[0];
   const last = values.at(-1);
   const span = max - min;
@@ -199,6 +253,7 @@ export function sparkline(values, options = {}) {
   } = options;
 
   checkLabels(labels, values);
+  checkTitle(title);
   checkSize(height, 'height');
   checkSize(width, 'width');
   checkColor(foreground, 'foreground');
@@ -225,20 +280,27 @@ export function sparkline(values, options = {}) {
   const extent = findExtent(values);
   const domainMin = tight ? extent.min : Math.min(0, extent.min);
   const domainMax = tight ? extent.max : Math.max(0, extent.max);
-  const span = domainMax - domainMin || 1; // A flat series draws flat, not NaN
+  // Halved where the span of two extreme values would overflow to `Infinity`
+  const scale = Number.isFinite(domainMax - domainMin) ? 1 : .5;
+  const span = domainMax * scale - domainMin * scale || 1; // A flat series draws flat, not NaN
 
   // The dot tracks the height, so that it stays visible on a tall chart without
   // swelling on a short one; the stroke stays hairline either way
   const radiusDot = round(Math.min(radiusDotMax, Math.max(radiusDotMin, height * ratioDot)));
 
   const padding = Math.max(widthStroke, radiusDot); // Room for the stroke and the dot
+  for (const [value, name] of [[width, 'width'], [height, 'height']]) {
+    if (value <= padding * 2) {
+      throw new RangeError(`\`${value}\` is too small to fit the line (\`${name}\`)—it has to exceed ${format(padding * 2)}.`);
+    }
+  }
   const step = (width - padding * 2) / (values.length - 1);
-  const toY = value => round(height - padding - (value - domainMin) / span * (height - padding * 2));
+  const toY = value => round(height - padding - (value * scale - domainMin * scale) / span * (height - padding * 2));
 
   const points = values.map((value, index) => [round(padding + index * step), toY(value)]);
   const [pointLastX, pointLastY] = points.at(-1);
 
-  const d = makePath(points);
+  const d = makePath(thinPoints(points));
 
   const attributesPath = isInline
     ? ` fill="none" stroke="${escapeAttribute(foreground)}" stroke-width="${format(widthStroke)}"` +
@@ -267,7 +329,7 @@ export function sparkline(values, options = {}) {
   // description isn’t repeated in `aria-label`. A decorative chart keeps the
   // tooltip but is hidden from assistive technology, which is what a heading
   // needs: A descendant name would otherwise be folded into the heading’s own.
-  const markupTitle = `<title>${escapeAttribute(describeSeries(values, { labels, title }))}</title>`;
+  const markupTitle = `<title>${escapeAttribute(describe(values, extent, labels, title))}</title>`;
   const attributesRole = decorative ? ' aria-hidden="true"' : ' role="img"';
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${format(width)} ${format(height)}"` +
