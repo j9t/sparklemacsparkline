@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 * Ensured valid output for series spanning nearly the full range of numbers
 * Rejected titles and labels with characters XML doesn’t allow, non-string titles, and sizes too small to fit the line or too large to compute
+* Prevented slow description generation for titles ending in long runs of whitespace (CodeQL `js/polynomial-redos`)
+* Left out the lead of the description for titles consisting only of periods and whitespace
 
 ### Changed
 

@@ -248,6 +248,14 @@ describe('describeSeries()', () => {
     );
   });
 
+  test('Trims trailing periods and whitespace from the title in linear time', () => {
+    assert.strictEqual(describeSeries([1, 2], { title: 'Posts. \t. ' }), 'Posts—sparkline of 2 values: rising from 1 to 2');
+    assert.strictEqual(describeSeries([1, 2], { title: ' . ' }), 'Sparkline of 2 values: rising from 1 to 2');
+    const start = performance.now();
+    describeSeries([1, 2], { title: '\t'.repeat(100000) + 'x' });
+    assert.ok(performance.now() - start < 100, 'Took too long on a title of many tabs');
+  });
+
   test('Fails on text that XML doesn’t allow', () => {
     assert.throws(() => describeSeries([1, 2], { title: 'a\u0001b' }), TypeError);
     assert.throws(() => describeSeries([1, 2], { labels: ['\uD800', 'b'] }), TypeError);

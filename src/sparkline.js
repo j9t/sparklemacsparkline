@@ -230,7 +230,10 @@ function describe(values, { min, max }, labels, title) {
   }
 
   const scope = labels ? ` from ${labels[0]} to ${labels.at(-1)}` : '';
-  const lead = title ? `${title.replace(/[.\s]+$/, '')}—sparkline` : 'Sparkline';
+  // Trimmed by hand, as `/[.\s]+$/` backtracks quadratically on runs of whitespace
+  let end = title?.length ?? 0;
+  while (end && /[.\s]/.test(title[end - 1])) end--;
+  const lead = end ? `${title.slice(0, end)}—sparkline` : 'Sparkline';
   return `${lead} of ${values.length} values${scope}: ${shape}`;
 }
 
