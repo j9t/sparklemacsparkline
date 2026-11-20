@@ -2,6 +2,28 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert';
 import { describeSeries, sparkline } from '../src/index.js';
 
+// What XML 1.0 rules out: most C0 controls, `U+FFFE`/`U+FFFF`, and lone surrogates
+// eslint-disable-next-line no-control-regex
+const patternCharInvalid = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+const number = '-?(?:\\d+\\.?\\d*|\\.\\d+)(?:e[+-]?\\d+)?';
+const patternNumber = new RegExp(`^${number}$`);
+const patternPath = new RegExp(`^[Mm]${number}(?: ?${number})*(?:[LlHhVv]${number}(?: ?${number})*)*$`);
+
+// Checks the markup this generator writes: valid characters, finite numbers, path data
+function assertValidSvg(svg) {
+  assert.ok(!patternCharInvalid.test(svg), 'Contains characters XML doesn’t allow');
+  assert.match(svg, /^<svg [^<>]*>(?:<title>[^<>]*<\/title>)?(?:<(?:rect|line|path|circle)(?: [\w-]+="[^"<>]*")*\/>)+<\/svg>$/);
+  for (const [, name, value] of svg.matchAll(/ ([\w-]+)="([^"]*)"/g)) {
+    if (['cx', 'cy', 'r', 'x2', 'y1', 'y2', 'stroke-width', 'opacity'].includes(name) || (['width', 'height'].includes(name) && !value.endsWith('%'))) {
+      assert.match(value, patternNumber, `\`${name}\` isn’t a number`);
+    } else if (name === 'viewBox') {
+      assert.strictEqual(value.split(' ').filter(part => patternNumber.test(part)).length, 4, '`viewBox` isn’t four numbers');
+    } else if (name === 'd') {
+      assert.match(value, patternPath, '`d` isn’t valid path data');
+    }
+  }
+}
+
 describe('sparkline()', () => {
   test('Returns inline-styled markup with a description by default', () => {
     assert.strictEqual(
@@ -94,8 +116,57 @@ describe('sparkline()', () => {
         Math.round((1.44 + index * step) * 100) / 100,
         Math.round((14.56 - (value - min) / span * 13.12) * 100) / 100
       ]);
-      assert.deepStrictEqual(readPath(sparkline(values, { width: widthOption }).match(/ d="([^"]*)"/)[1]), expected);
+      const actual = readPath(sparkline(values, { width: widthOption }).match(/ d="([^"]*)"/)[1]);
+      if (!widthOption) {
+        assert.deepStrictEqual(actual, expected);
+        continue;
+      }
+      // Points sharing an x may be thinned, keeping the order and each column’s ends and extremes
+      const columns = points => {
+        const byX = new Map();
+        for (const [x, y] of points) {
+          const column = byX.get(x) ?? { first: y, min: y, max: y };
+          byX.set(x, { ...column, last: y, min: Math.min(column.min, y), max: Math.max(column.max, y) });
+        }
+        return [...byX];
+      };
+      assert.deepStrictEqual(columns(actual), columns(expected));
+      let position = 0;
+      for (const point of actual) {
+        while (position < expected.length && String(expected[position]) !== String(point)) position++;
+        assert.ok(position++ < expected.length, `${point} is out of order`);
+      }
     }
+  });
+
+  test('Writes valid markup for any finite series', () => {
+    let seed = 7;
+    const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const scales = [1e-9, 1e-3, 1, 1e6, 1e20, 1e300];
+    for (let run = 0; run < 200; run++) {
+      const scale = scales[run % scales.length];
+      const values = Array.from({ length: 2 + Math.floor(random() * 60) }, () => (random() - .4) * scale);
+      const svg = sparkline(values, { tight: run % 3 === 0, width: run % 4 ? undefined : 3 + random() * 300, background: '#fff' });
+      assertValidSvg(svg);
+    }
+    assertValidSvg(sparkline([-1e308, 1e308]));
+    assertValidSvg(sparkline([Number.MAX_VALUE, -Number.MAX_VALUE, 0]));
+    assertValidSvg(sparkline([1, 2], { width: 1e300, height: 1e300 }));
+  });
+
+  test('Draws long series through the extremes of each column only', () => {
+    const values = Array.from({ length: 100000 }, (_, index) => Math.sin(index / 50) * 100 + (index % 7));
+    const svg = sparkline(values);
+    assertValidSvg(svg);
+    // At most four points per distinct x, of which 160 units hold 15,713 at two decimals
+    assert.ok(svg.length < 400000, `Got ${svg.length} bytes`);
+    assert.ok(svg.includes('<circle class="sparkline-dot" cx="158.56" cy="'));
+  });
+
+  test('Keeps the first, lowest, highest, and last point among points sharing an x', () => {
+    const d = values => sparkline(values, { width: 2.9, tight: true }).match(/ d="([^"]*)"/)[1];
+    // Four points round to x 1.45, of which the one at y 9.64 is neither an end nor an extreme
+    assert.strictEqual(d([5, 1, 3, 9, 4, 6, 6, 2]), 'M1.44 8v6.56l.01-3.28V1.44 6.36h.01v6.56');
   });
 
   test('Applies colors and a background', () => {
@@ -134,6 +205,10 @@ describe('sparkline()', () => {
 
   test('Fails on invalid options', () => {
     assert.throws(() => sparkline([1, 2], { width: 0 }), RangeError);
+    assert.throws(() => sparkline([1, 2], { width: 2.88 }), /too small/);
+    assert.throws(() => sparkline([1, 2], { height: 2.5 }), /too small/);
+    assert.throws(() => sparkline([1, 2], { width: 1e307 }), /too large/);
+    assert.throws(() => sparkline([1, 2], { title: 5 }), TypeError);
     assert.throws(() => sparkline([1, 2], { height: '16' }), RangeError);
     assert.throws(() => sparkline([1, 2], { style: 'fancy' }), RangeError);
     assert.throws(() => sparkline([1, 2], { foreground: 'red" onload="x' }), TypeError);
@@ -171,6 +246,13 @@ describe('describeSeries()', () => {
       describeSeries([5, 9, 1, 5], { labels: ['a', 'b', 'c', 'd'] }),
       'Sparkline of 4 values from a to d: ranging from 1 in c to 9 in b, ending at 5'
     );
+  });
+
+  test('Fails on text that XML doesn’t allow', () => {
+    assert.throws(() => describeSeries([1, 2], { title: 'a\u0001b' }), TypeError);
+    assert.throws(() => describeSeries([1, 2], { labels: ['\uD800', 'b'] }), TypeError);
+    assert.throws(() => sparkline([1, 2], { labels: ['a', '\uFFFF'] }), TypeError);
+    assert.doesNotThrow(() => describeSeries([1, 2], { title: 'Tab\tand emoji 📈' }));
   });
 
   test('Formats numbers', () => {

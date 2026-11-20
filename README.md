@@ -53,7 +53,7 @@ const svg = sparkline([4, 42, 50, 34, 13], { title: 'Posts per year' });
 }
 ```
 
-Invalid input throws: a `RangeError` for too few values, mismatched labels, an unknown style, or a size that isn’t a positive number; a `TypeError` for values that aren’t finite numbers, colors that don’t look like CSS colors, or colors combined with the external style.
+Invalid input throws: a `RangeError` for too few values, mismatched labels, an unknown style, or a size that isn’t a positive number, is too small to fit the line, or is too large to compute; a `TypeError` for values that aren’t finite numbers, a title that isn’t a string, a title or labels with characters XML doesn’t allow (most control characters, for example), colors that don’t look like CSS colors, or colors combined with the external style.
 
 `describeSeries(values, { labels, title })` returns the description `sparkline()` uses as the accessible name—for a visible caption or an `img` element’s `alt` text, for example.
 
@@ -121,7 +121,7 @@ A series that crosses zero gets a faint axis at zero, as the sign of a value is 
 
 Presentation is inline by default: Colors are set as presentation attributes on the elements, which keeps the output valid as a standalone file and, unlike an embedded `style` element, cannot leak rules into a page it’s inlined in. As the default color is `currentColor`, an inlined sparkline still follows the surrounding text color, dark mode, and forced-colors mode. (Custom colors don’t adapt to forced-colors mode.)
 
-The markup is as short as valid SVG allows: Path data uses the shortest of absolute and relative commands per segment, numbers are rounded to two decimals without leading zeros, and default attributes are left out. What remains is needed for a standalone file (`xmlns`, quoted attributes)—a minifier can still drop that when the sparkline is inlined in HTML.
+The markup is as short as valid SVG allows: Points sharing an x coordinate are reduced to the ones that shape the line (the first, lowest, highest, and last), path data uses the shortest of absolute and relative commands per segment, numbers are rounded to two decimals without leading zeros, and default attributes are left out. What remains is needed for a standalone file (`xmlns`, quoted attributes)—a minifier can still drop that when the sparkline is inlined in HTML.
 
 With the external style, the elements carry class names only (`sparkline`, `sparkline-line`, `sparkline-dot`, `sparkline-axis`), leaving all presentation to a style sheet. Without classes, the elements can be selected by context, as in `h2 svg path`.
 

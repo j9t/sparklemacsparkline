@@ -4,6 +4,18 @@ All notable changes to Sparkle MacSparkline are documented in this file, which i
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2026-11-20
+
+### Fixed
+
+* Ensured valid output for series spanning nearly the full range of numbers
+* Rejected titles and labels with characters XML doesn’t allow, non-string titles, and sizes too small to fit the line or too large to compute
+
+### Changed
+
+* Sped up long series and shortened their output by drawing only the points that shape the line where several share an x coordinate
+* Made path data generation faster
+
 ## [1.0.1] - 2026-11-19
 
 ### Changed
